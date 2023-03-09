@@ -23,10 +23,9 @@ from SPARQLWrapper import SPARQLWrapper, JSON
 import operator
 import re
 from dateutil.relativedelta import relativedelta
-#sys.path.append('/home/katarinana/work_desk/BUFR/funcs')
-from get_keywords import get_keywords
-from code_tables import *
-from useful_functions import *
+from funcs.get_keywords import *
+from funcs.code_tables import *
+from funcs.useful_functions import *
 import netCDF4
 import glob
 from datetime import datetime, timedelta, date
