@@ -20,11 +20,9 @@ from logging.handlers import TimedRotatingFileHandler
 import matplotlib.pyplot as plt
 import numpy as np
 import traceback
-#from SPARQLWrapper import SPARQLWrapper, JSON
 import operator
 import re
 from dateutil.relativedelta import relativedelta
-#sys.path.append('/home/katarinana/work_desk/BUFR/funcs')
 from funcs.get_keywords import *
 from funcs.code_tables import *
 from funcs.useful_functions import *
