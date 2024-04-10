@@ -146,13 +146,19 @@ def bufr_2_json(file):
     
     #open bufr file, convert to json (using "-j s") and load it with json.loads
 
-    json_file = json.loads(subprocess.check_output("bufr_dump -j f {}".format(file), shell=True))
-    
+    # TODO add some error checking...
+    ##json_file = json.loads(subprocess.check_output("bufr_dump -j f -f {}".format(file), shell=True, stderr=subprocess.STDOUT))
+    mydump = subprocess.run("bufr_dump -j f -f {}".format(file), shell=True, check=False, capture_output=True)
+    json_file = json.loads(mydump.stdout)
+    #print(json.dumps(json_file, indent=2))
+    #sys.exit()
    
     # sorting so that each subset is a list of dictionary
     count = 0
     sorted_messages = []
     for message in json_file['messages']:
+        print('>>>> new message ', count)
+        print(json.dumps(message, indent=2))
         if message['key'] == 'subsetNumber':
             count += 1
             sorted_messages.append([])
