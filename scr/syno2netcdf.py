@@ -157,8 +157,10 @@ def bufr_2_json(file):
     count = 0
     sorted_messages = []
     for message in json_file['messages']:
+        """
         print('>>>> new message ', count)
         print(json.dumps(message, indent=2))
+        """
         if message['key'] == 'subsetNumber':
             count += 1
             sorted_messages.append([])
