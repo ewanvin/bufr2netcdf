@@ -260,7 +260,6 @@ def return_list_of_stations(get_files):
     return stations
 
 parse = parse_arguments()
-#print(return_list_of_stations(get_files_specified_dates(parse_cfg(parse.cfgfile)['station_info']['path'])))
 
 def sorting_hat(get_files, stations = 1):
     cfg = parse_cfg(parse_arguments().cfgfile)
@@ -291,22 +290,28 @@ def sorting_hat(get_files, stations = 1):
     return stations_dict
 
 
+def dedup_names(names):
+    """
+    _maybe_dedup_names is decrepit in pandas 2.2.3 so added handling for duplicate colum names
+    """
+    count = {}
+    for i, col in enumerate(names):
+        if col not in count:
+            count[col] = 0
+        else:
+            count[col] += 1
+            names[i] = col + '.' + str(count[col])
+    return names
+
+
     
 def json_to_ds(msg):
-    #print(msg)
-    #sys.exit()
-
-
-    tacos = []
     
-    #check_list = ['pressure', 'verticalSoundingSignificance', 'nonCoordinateGeopotential',
-    #              'airTemperature', 'dewpointTemperature', 'windDirection', 'windSpeed']
-    
+    tacos = []    
     xars = []
     pressure_ds = []
     other_ds = []
     df_units = []
-    
     
     for i in msg:
         count1 = 0
@@ -395,17 +400,11 @@ def json_to_ds(msg):
         full_taco = full_taco.fillna(-9999)
         
         pressure_ds.append(full_taco)
-            
-        #if 'second' in df_vals.columns:
-        #    df_vals['time'] = blob
-        #    df_vals = df_vals.drop(columns = ['key','year', 'month', 'day','hour', 'minute', 'second'])
-        #else:
-        #    df_vals['time'] = blob
-        #    df_vals = df_vals.drop(columns = ['key','year', 'month', 'day','hour', 'minute'])
-                
+                    
         df_vals = df_vals.set_index('time')
-        cols = pd.io.parsers.base_parser.ParserBase({'names':df_vals.columns, 'usecols':None})._maybe_dedup_names(df_vals.columns)
-        
+        #cols = pd.io.parsers.base_parser.ParserBase({'names':df_vals.columns, 'usecols':None})._maybe_dedup_names(df_vals.columns)
+        cols = dedup_names(list(df_vals.columns))
+
         df_vals.columns = cols # will add a ".1",".2" etc for each double name
         for column in df_vals.columns:
             try:
@@ -428,7 +427,7 @@ def json_to_ds(msg):
                 continue
         new_unit = new_unit.transpose()
         new_unit = new_unit.reset_index().rename(columns={'index':'key'})
-        cols = pd.io.parsers.base_parser.ParserBase({'names':new_unit['key'], 'usecols':None})._maybe_dedup_names(new_unit['key'])
+        cols = dedup_names(list(new_unit['key']))
         new_unit['key'] = cols # will add a ".1",".2" etc for each double name
         df_units.append(new_unit)
     
@@ -443,6 +442,10 @@ def json_to_ds(msg):
         return message
     
     tik = tik[~tik.index.duplicated()]
+
+    # Removing rows where the 'pressure' level of the index has null values
+    tik = tik[tik.index.get_level_values('pressure').notna()]
+
     tik = tik.to_xarray()
 
     if len(other_ds) > 1:
@@ -455,6 +458,27 @@ def json_to_ds(msg):
     
     tak = tak[~tak.index.duplicated()]
     tak = tak.to_xarray()
+
+    # Convert string to integer codes
+    if 'shipOrMobileLandStationIdentifier' in tik:
+        codes, uniques = pd.factorize(tik['shipOrMobileLandStationIdentifier'].values)
+        tik['shipOrMobileLandStationIdentifier'] = codes
+        tik.attrs['shipOrMobileLandStationIdentifier_categories'] = uniques
+
+    # Try changing the dimension with which 'shipOrMobileLandSrtationIdentifier' is associated before factorizing
+    if 'shipOrMobileLandStationIdentifier' in tak:
+        codes, uniques = pd.factorize(tak['shipOrMobileLandStationIdentifier'].data)
+        tak = tak.assign(shipOrMobileLandStationIdentifier=('time', codes))
+        tak.attrs['shipOrMobileLandStationIdentifier_categories'] = uniques.tolist()
+
+    
+    # Same for 'radiosonde...'
+    if 'radiosondeSerialNumber' in tak:
+        codes, uniques = pd.factorize(tak['radiosondeSerialNumber'].data)
+        tak = tak.assign(radiosondeSerialNumber=('time', codes))
+        tak.attrs['radiosondeSerialNumber_categories'] = uniques.tolist()
+
+
     
     if units_df.empty:
         units_df= pd.DataFrame({'key': ['something','to','make', 'it' ,'pass']})
@@ -483,7 +507,8 @@ def json_to_ds(msg):
         var = variable
         if variable[-2] == '.':
             var = variable[:-2]
-        change_upper_case = re.sub('(?<!^)(?=\d{2})', '_',re.sub('(?<!^)(?=[A-Z])', '_', var)).lower()
+        # Using the raw string for the regex (treating \ as a normal character), but prefixing the string with letter 'r'
+        change_upper_case = re.sub(r'(?<!^)(?=\d{2})', '_',re.sub(r'(?<!^)(?=[A-Z])', '_', var)).lower()       
         
         # checking for standardname
         standardname_check = cf_match(change_upper_case)
@@ -621,8 +646,15 @@ def saving_grace(file, key, destdir):
     file = file.sortby('time')
     gb = file.groupby('time.month')
     
-        
-    #gb = gb.sortby('time')
+    # Convert key to string if not already
+    key = str(key)
+
+    # Check if key contains any special characters
+    if re.search(r'\W', key):
+        print(f"'{key}' contains special characters. Replacing them with '_'.")
+
+    # Replace any non-alphanumeric character with an underscore
+    clean_key = re.sub(r'\W', '_', key)
     
     for group_name, group_da in gb:
         #group_da = file
@@ -637,7 +669,6 @@ def saving_grace(file, key, destdir):
 
 
         ds_dictio = group_da.to_dict()
-
         bad_time = ds_dictio['coords']['time']['data']
         ds_dictio['coords']['time']['data'] = np.array([((ti - datetime(1970,1,1)).total_seconds()) for ti in bad_time]).astype('i4')
         ds_dictio['coords']['pressure']['data'] = np.float32(ds_dictio['coords']['pressure']['data'])
@@ -657,9 +688,9 @@ def saving_grace(file, key, destdir):
         all_ds_station_period['pressure'].attrs['long_name'] = 'air_pressure'
         all_ds_station_period['pressure'].attrs['coverage_content_type'] = 'referenceInformation'
         
-        all_ds_station_period.attrs['id'] = 'temp_{}_{}-{}.nc'.format(key, timestring1, timestring2)
-        all_ds_station_period.attrs['title'] = 'Measurements from station with station identifier number {}'.format(key)
-        all_ds_station_period.to_netcdf('{}/temp_{}_{}-{}.nc'.format(destdir, key, timestring1, timestring2),
+        all_ds_station_period.attrs['id'] = 'temp_{}_{}-{}.nc'.format(clean_key, timestring1, timestring2)
+        all_ds_station_period.attrs['title'] = 'Measurements from station with station identifier number {}'.format(clean_key)
+        all_ds_station_period.to_netcdf('{}/temp_{}_{}-{}.nc'.format(destdir, clean_key, timestring1, timestring2),
                                             engine='netcdf4', encoding=set_encoding(all_ds_station_period))
 
             
@@ -676,8 +707,6 @@ if __name__ == "__main__":
         sorted_files = sorting_hat(get_files_initialize(frompath))
         for key, val in sorted_files.items():
             file = json_to_ds(sorted_files['{}'.format(key)])
-            #file.to_netcdf('test1.nc')
-            #sys.exit()
             saving = saving_grace(file, key, destdir)
         
                
@@ -830,6 +859,5 @@ if __name__ == "__main__":
         
     else:
         print('either type in -i, -u or enter starday/endday')
-        sys.exit()
-        
+        sys.exit()   
  
