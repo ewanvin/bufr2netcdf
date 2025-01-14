@@ -1,21 +1,18 @@
-# bufr_processing.py
-
 import os
 from datetime import datetime
 from eccodes import *
-import logging
 
 def initialize_files(cfgstr):
     files = []
     data = []
     input_path = cfgstr['input']['path']
-    logging.info(f'Initializing files from input path: {input_path}')
+    print(f'Initializing files from input path: {input_path}')
     for file in os.listdir(input_path):
         if file.endswith('.bufr'):
             file_path = os.path.join(input_path, file)
             files.append(datetime.strptime(file[5:-5], "%Y%m%d%H"))
             data.append(file_path)
-            logging.info(f'Found BUFR file: {file_path}')
+            print(f'Found BUFR file: {file_path}')
     return files, data
 
 def read_bufr_messages(file):
@@ -26,16 +23,16 @@ def read_bufr_messages(file):
             for i in range(nmsg):
                 bufr = codes_bufr_new_from_file(f)
                 if bufr is None:
-                    logging.warning(f'Failed to load BUFR message from {file}')
+                    print(f'Failed to load BUFR message from {file}')
                     continue
                 try:
                     codes_set(bufr, 'unpack', 1)
                     messages.append(bufr)
                 except CodesInternalError as err:
-                    logging.error(f"Error decoding BUFR message from {file}: {err}")
+                    print(f"Error decoding BUFR message from {file}: {err}")
                     codes_release(bufr)
     except Exception as e:
-        logging.error(f"Error reading BUFR messages from {file}: {e}")
+        print(f"Error reading BUFR messages from {file}: {e}")
     return messages
 
 def get_all_keys(bufr):
@@ -47,7 +44,7 @@ def get_all_keys(bufr):
             keys.append(key_name)
         codes_bufr_keys_iterator_delete(iter_id)
     except CodesInternalError as err:
-        logging.error(f"Error creating keys iterator: {err}")
+        print(f"Error creating keys iterator: {err}")
     return keys
 
 def decode_bufr_message(bufr):
@@ -58,11 +55,11 @@ def decode_bufr_message(bufr):
             value = codes_get(bufr, key)
             data[key] = value
         except CodesInternalError as err:
-            logging.error(f'Error with key="{key}": {err.msg}')
+            print(f'Error with key="{key}": {err.msg}')
             if 'Passed array is too small' in str(err):
                 try:
                     value = codes_get_array(bufr, key)
                     data[key] = value
                 except Exception as array_exception:
-                    logging.warning(f"Error with array key={key}: {array_exception}")
+                    print(f"Error with array key={key}: {array_exception}")
     return data
