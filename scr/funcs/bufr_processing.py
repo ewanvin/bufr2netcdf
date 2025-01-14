@@ -1,5 +1,3 @@
-# bufr_processing.py
-
 import os
 from datetime import datetime
 from eccodes import *
